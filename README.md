@@ -50,7 +50,9 @@ rules actually used. The table here is 4.5 KB, and it answers every case of the
 Unicode 16.0 `GraphemeBreakTest`, in CI and on every device alike.
 
 `make unicode-sync` regenerates the table and the conformance suite from a
-pinned Unicode version.
+pinned Unicode version. A character assigned after that version is read by the
+same rules with the data we hold, so an emoji sequence newer than the pinned
+Unicode may come apart until the table is regenerated.
 
 ## Installation
 

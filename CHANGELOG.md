@@ -31,4 +31,5 @@
   [lettermark](https://github.com/botforge-pro/lettermark) — the Go repository
   this is a port of, and the one every port follows — byte for byte. Without
   the network that test fails rather than passing quietly, because a corpus
-  nobody could read proves nothing.
+  nobody could read proves nothing. It runs in this repository's own suite, so
+  it is not something a consumer of the published artifact ever runs.
