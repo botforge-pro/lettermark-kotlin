@@ -1,0 +1,15 @@
+documentation: https://botforge-pro.github.io/lettermark-kotlin/scripts/pages.json
+
+skip:
+  - build/
+
+allow:
+  - file: tools/generate-graphemes.py
+    text: '"""Builds the grapheme table this port segments with, from the pinned UCD."""'
+    what_was_tried_and_why_none_of_it_worked:
+      "The file's name says what it builds but not from what, and a generator
+       that silently reads a different Unicode version than the one the tests
+       assert is the failure this line exists to prevent. It is a module
+       docstring of a script outside the published library, so there is no
+       documentation page for it to live on, and the identifier it would
+       otherwise be folded into is the file name itself."

@@ -1,0 +1,721 @@
+# lettermark — the contract.
+#
+# Two questions, and nothing else:
+#
+#   Initials(name)  -> the letters drawn in the square
+#   Slot(id, slots) -> which of the caller's colour slots the thing gets
+#
+# Every port carries a copy of this file and answers every case in it. A case
+# added here is answered by all of them or fails loudly. Where a case below
+# could reasonably be answered otherwise, the comment next to it says so.
+#
+#
+# ── Initials ──────────────────────────────────────────────────────────────
+#
+# 1. Normalise the name to NFC.
+#
+# 2. Split it into words at runs of White_Space (the property, listed below).
+#    U+00A0 and U+202F split words; U+200B ZERO WIDTH SPACE does not — it is a
+#    format character and splits nothing.
+#
+# 3. In each word read extended grapheme clusters (UAX #29) from the start and
+#    take the first cluster whose first scalar is a letter (general category
+#    Lu, Ll, Lt or Lo) or a decimal digit (Nd). Lm is not a letter here, so a
+#    Hawaiian ʻokina and an Arabic tatweel are skipped rather than drawn; nor
+#    are Nl (Ⅷ) and No (①) digits. A word with no such cluster is skipped
+#    whole and the next word is tried.
+#
+# 4. Extend that cluster into one written syllable, repeating until neither
+#    rule applies:
+#      - its last scalar is a virama (table below) -> append the next cluster;
+#      - it is a single scalar and that scalar is a prefix vowel (table below)
+#        -> append the next cluster.
+#    This is why क्षितिज gives क्षि and not क् (a halant hanging on nothing),
+#    and ไทย gives ไท and not ไ (a vowel with no consonant to sit on).
+#    The result is one unit.
+#
+# 5. Take the unit from the first word that yields one. If its first scalar is
+#    in a one-unit script (table below), stop there. Otherwise take one more
+#    unit, from the next word that yields one. Never more than two.
+#
+# 6. Uppercase each unit with the invariant, locale-independent mapping. If the
+#    uppercased unit has more scalars than the original, keep the original: a
+#    square holds a letter, not its spelling out, so ß stays ß, և stays և, ﬁ
+#    stays ﬁ and ᾀ stays ᾀ. Georgian Mkhedruli (U+10D0..U+10FF) is left alone:
+#    its uppercase is Mtavruli, which sets whole words in caps and is not how
+#    a Georgian initial is written.
+#
+# 7. Join the units in the order taken; normalise the result to NFC.
+#
+# 8. If no word yielded a unit, fall back to the first cluster of the name
+#    whose first scalar is neither whitespace nor in general category M* or C*:
+#    🎉 keeps 🎉, "???" gives "?". If there is no such cluster either — the name
+#    is empty, blank, or nothing but marks and format characters — return the
+#    empty string. The caller then draws the square in its colour with no
+#    letters in it; this library does not invent a "?".
+#
+# The result never contains whitespace, and carries a format character only
+# inside a cluster that owns it — the ZWJ holding an emoji sequence together.
+# A loose U+202E carried into a label reorders the interface around it.
+#
+#
+# ── Slot ──────────────────────────────────────────────────────────────────
+#
+#   slot = ((id mod slots) + slots) mod slots
+#
+# `id` is a signed 64-bit integer and `mod` is the language's remainder
+# operator. The doubled operation is not decoration: Go, Swift and Kotlin all
+# answer -1 % 12 == -1, which is not a colour slot. Do not reach for abs()
+# instead — abs(Int64.min) overflows, and in Swift it traps.
+#
+# `slots` is how many colours the caller's own palette holds. The library has
+# no palette and no default count: a second caller paints a different number,
+# so a number chosen here would be wrong for one of them. Every case below
+# carries the palette it was asked about.
+#
+# A count below 1 is not a case here, because it is not a value the rule has an
+# answer for: it means the palette and the code disagree, and each port refuses
+# it the way its language refuses a broken invariant.
+#
+# Ids `slots` apart share a slot. That is accepted: the slot has to be the same
+# every time the same thing is drawn, and neighbours in a list still differ.
+#
+#
+# ── Tables ────────────────────────────────────────────────────────────────
+#
+# White_Space: 0009..000D 0020 0085 00A0 1680 2000..200A 2028 2029 202F 205F
+#              3000
+#   Java's Character.isWhitespace answers false for 00A0, 2007 and 202F. Test
+#   with isSpaceChar as well, or with this list.
+#
+# Virama:      094D 09CD 0A4D 0ACD 0B4D 0BCD 0C4D 0CCD 0D4D 0DCA 0F84 1039
+#              17D2
+#   Myanmar asat 103A is deliberately absent: it ends a syllable rather than
+#   asking for the next consonant.
+#
+# Prefix vowel: 0E40..0E44 (Thai)  0EC0..0EC4 (Lao)
+#
+# One-unit scripts, by first scalar — scripts whose letters join up, or whose
+# single character already reads as a word:
+#   0600..06FF 0700..074F 0750..077F 07C0..07FF 0860..086F 08A0..08FF
+#   FB50..FDFF FE70..FEFF 1E900..1E95F            (Arabic, Syriac, N'Ko, Adlam)
+#   1100..11FF 3130..318F A960..A97F AC00..D7FF FFA0..FFDC          (Hangul)
+#   2E80..2EFF 3400..4DBF 4E00..9FFF F900..FAFF 20000..3134F           (Han)
+#   3040..30FF 31F0..31FF FF66..FF9F                        (Kana, Japanese)
+#   1800..18AF                                                  (Mongolian)
+#   Two joining Arabic letters side by side shape into a word that does not
+#   exist; two Han characters are two words. One is the honest answer for both.
+#
+#
+# ── Reading the cases ─────────────────────────────────────────────────────
+#
+# `expect_codepoints`, where present, writes the expected result out as Unicode
+# scalars. Compare against it, not only against `expect`: Swift's String ==
+# compares by canonical equivalence, so a Swift port that skips step 1 or 7
+# still passes a plain string comparison. Compare the result's unicodeScalars.
+#
+# Go: ranging a string yields runes, not clusters, and slicing yields bytes.
+# Kotlin: String indexing yields UTF-16 units, so name[0] of an emoji or of a
+# Deseret letter is half a surrogate pair. Swift: Character is already an
+# extended grapheme cluster, which is the one place Swift starts ahead.
+
+version: 2
+
+initials:
+
+  # ── The common case: ordinary names, mostly two words ──
+
+  - case: two-words
+    name: "Wiki Layer"
+    expect: "WL"
+
+  - case: person-two-names
+    name: "Anna Ivanova"
+    expect: "AI"
+
+  - case: one-word
+    name: "wikilayer"
+    expect: "W"
+    # Decision, and the one most open to argument: a one-word name gives one
+    # letter, not its first two. "Wi" or "WI" would be more distinctive, but it
+    # needs a rule for the second character, and in half the world's scripts
+    # the second character is a mark that cannot stand on its own. If this is
+    # settled the other way, it has to be settled per script.
+
+  - case: acronym
+    name: "ASO"
+    expect: "A"
+    # The cost of the rule above, paid in full: a reader would sooner see
+    # "ASO" or "AS" here. Worth raising with a human before the ports land.
+
+  - case: two-words-caps-kept
+    name: "London Airports"
+    expect: "LA"
+
+  - case: many-words
+    name: "The House of the Inner Wind"
+    expect: "TH"
+    # First two words, not first and last. First-and-last would give "TW" here
+    # and "JT" for the case below, which is better for people and worse for
+    # titles. This library is asked about wikis and projects as well as people,
+    # so it takes what the reader reads first.
+
+  - case: person-four-names
+    name: "John Ronald Reuel Tolkien"
+    expect: "JR"
+    # First-and-last would give "JT". See the case above.
+
+  - case: surrounding-and-repeated-spaces
+    name: "  Anna   Ivanova  "
+    expect: "AI"
+
+  - case: hyphenated-given-name
+    name: "Jean-Luc Picard"
+    expect: "JP"
+    # A hyphen does not split words. "Mary-Jane Watson" gives "MW", not "MJ".
+
+  - case: colon-in-store-name
+    name: "Apakabar Guide: travel companion"
+    expect: "AG"
+
+  - case: single-character
+    name: "x"
+    expect: "X"
+
+  - case: empty
+    name: ""
+    expect: ""
+
+  - case: blank
+    name: "   "
+    expect: ""
+    # Empty, not "?". The caller draws an empty square in the thing's colour.
+
+  # ── Cyrillic and Greek ──
+
+  - case: cyrillic-three-words
+    name: "Дом Внутреннего Ветра"
+    expect: "ДВ"
+
+  - case: cyrillic-yo
+    name: "ёлка"
+    expect: "Ё"
+    expect_codepoints: "0401"
+
+  - case: greek-already-capital
+    name: "Ελληνικά"
+    expect: "Ε"
+    expect_codepoints: "0395"
+    # Greek capital epsilon U+0395, not Latin E U+0045.
+
+  - case: greek-tonos
+    name: "όλα καλά"
+    expect: "ΌΚ"
+    expect_codepoints: "038C 039A"
+    # The tonos is kept. Greek drops it when a word is set in capitals, and ICU
+    # with locale "el" answers "ΟΚ" — but this is an initial, where the accent
+    # is written. A Greek reader should be asked which they want in the square.
+
+  - case: greek-final-sigma
+    name: "ς"
+    expect: "Σ"
+    expect_codepoints: "03A3"
+
+  # ── Letters whose uppercase is longer than the letter ──
+
+  - case: sharp-s-alone
+    name: "ß"
+    expect: "ß"
+    expect_codepoints: "00DF"
+    # Swift's "ß".uppercased() and Kotlin's "ß".uppercase() both give "SS":
+    # two letters where one was asked for, and in German a reading nobody
+    # intended. Go's strings.ToUpper already leaves it alone.
+
+  - case: sharp-s-word
+    name: "ßeta"
+    expect: "ß"
+    expect_codepoints: "00DF"
+
+  - case: armenian-ligature
+    name: "և"
+    expect: "և"
+    expect_codepoints: "0587"
+    # Armenian ech-yiwn, a word in its own right. Full uppercase gives "ԵՒ".
+
+  - case: fi-ligature
+    name: "ﬁnder"
+    expect: "ﬁ"
+    expect_codepoints: "FB01"
+    # Full uppercase gives "FI".
+
+  - case: greek-iota-subscript
+    name: "ᾀ"
+    expect: "ᾀ"
+    expect_codepoints: "1F80"
+    # Full uppercase gives "ἈΙ", two scalars, so the original stays. Note that
+    # Go's strings.ToUpper answers "ᾈ" (U+1F88, one scalar) and so passes step
+    # 6 without reverting: a Go port must compare scalar counts before and
+    # after, not trust that its own uppercase never expands.
+
+  - case: dutch-ij-ligature
+    name: "ĳsselmeer"
+    expect: "Ĳ"
+    expect_codepoints: "0132"
+    # One scalar in, one scalar out, so this one is uppercased.
+
+  - case: dutch-ij-digraph
+    name: "IJsselmeer"
+    expect: "I"
+    # Written as two letters, the Dutch digraph loses its J. Dutch capitalises
+    # both ("IJsselmeer"), and a Dutch reader wants "IJ". Getting that right
+    # needs to know the name is Dutch, which nothing here does. Accepted, and
+    # named so that nobody rediscovers it as a bug.
+
+  - case: serbian-dz-digraph
+    name: "ǆungla"
+    expect: "Ǆ"
+    expect_codepoints: "01C4"
+    # Uppercase gives Ǆ (all caps). Titlecase would give ǅ ("Dž"), which is
+    # what a Croatian or Serbian reader writes at the head of a word.
+
+  # ── Case that depends on locale, or on nothing ──
+
+  - case: turkish-dotless-result
+    name: "istanbul"
+    expect: "I"
+    expect_codepoints: "0049"
+    # Invariant casing, always. On a Turkish device Kotlin's deprecated
+    # toUpperCase() and Go's strings.ToUpperSpecial(unicode.TurkishCase) both
+    # answer "İ". If the Turkish letter is wanted, the name has to carry a
+    # language, which the API does not have.
+
+  - case: turkish-dotless-input
+    name: "ırmak"
+    expect: "I"
+    expect_codepoints: "0049"
+
+  - case: dotted-capital-i-composed
+    name: "İstanbul"
+    expect: "İ"
+    expect_codepoints: "0130"
+    # I + COMBINING DOT ABOVE composes to U+0130 under NFC. A port that skips
+    # step 1 answers "I" and drops the dot.
+
+  - case: georgian
+    name: "ქართული"
+    expect: "ქ"
+    expect_codepoints: "10E5"
+    # Not "Ქ" (U+1CA5). Mkhedruli has no capitals; Mtavruli is for setting a
+    # whole word in caps. Swift, Kotlin and Go all answer Mtavruli if asked to
+    # uppercase, which is why step 6 carves Georgian out by range.
+
+  - case: cherokee-lowercase
+    name: "ꮳꮃꭹ"
+    expect: "Ꮳ"
+    expect_codepoints: "13E3"
+    # Cherokee is the opposite case to Georgian: its capitals are the older,
+    # ordinary form, so uppercasing is right here.
+
+  # ── Right to left, and letters that join ──
+
+  - case: hebrew-one-word
+    name: "עברית"
+    expect: "ע"
+    expect_codepoints: "05E2"
+
+  - case: hebrew-two-words
+    name: "שלום עולם"
+    expect: "שע"
+    expect_codepoints: "05E9 05E2"
+    # Two letters in the order taken — shin first in memory, drawn rightmost.
+    # No port reverses anything; the text engine does that. Hebrew letters do
+    # not join, so two of them side by side stay two letters.
+
+  - case: arabic-two-words
+    name: "مرحبا بالعالم"
+    expect: "م"
+    expect_codepoints: "0645"
+    # One letter, by the one-unit table. Two Arabic letters put next to each
+    # other shape into a joined form that reads as a word fragment nobody
+    # wrote. Some products do show two here; a reader of Arabic should settle
+    # it.
+
+  - case: arabic-tatweel-first
+    name: "ـمرحبا"
+    expect: "م"
+    expect_codepoints: "0645"
+    # Tatweel is a letter by general category (Lm) but draws as a bare stroke.
+    # Go's unicode.IsLetter and Java's Character.isLetter both accept it, so a
+    # naive port draws a dash. Step 3 accepts Lu, Ll, Lt and Lo only.
+
+  - case: hawaiian-okina
+    name: "ʻŌlelo Hawaiʻi"
+    expect: "ŌH"
+    expect_codepoints: "014C 0048"
+    # Same trap as tatweel, in a name someone really has: the ʻokina U+02BB is
+    # Lm. It is a letter of Hawaiian, but not the one to draw.
+
+  - case: mixed-direction
+    name: "Wiki עברית"
+    expect: "Wע"
+    expect_codepoints: "0057 05E2"
+    # Two letters of opposite direction. The library does not add bidi marks;
+    # the label should take its direction from the first character, and the
+    # squares on a screen should not each pick their own.
+
+  # ── Scripts without capitals, without spaces, or written in syllables ──
+
+  - case: han-no-spaces
+    name: "中文维基"
+    expect: "中"
+
+  - case: han-with-space
+    name: "北京 大学"
+    expect: "北"
+    # Stops at one although there is a second word: the first unit decides.
+
+  - case: japanese-mixed
+    name: "日本語ウィキ"
+    expect: "日"
+
+  - case: katakana-small-kana
+    name: "ウィキ"
+    expect: "ウ"
+    expect_codepoints: "30A6"
+    # The small ィ is its own cluster, so the first unit is just ウ.
+
+  - case: hangul-syllables
+    name: "김민준"
+    expect: "김"
+    expect_codepoints: "AE40"
+
+  - case: hangul-jamo-decomposed
+    name: "한글"
+    expect: "한"
+    expect_codepoints: "D55C"
+    # Conjoining jamo compose to syllables under NFC. Without step 1 a port
+    # answers a lone ᄒ, which is drawn as a jamo and not as a syllable.
+
+  - case: latin-then-han
+    name: "Wiki 中文"
+    expect: "W中"
+    # The one-unit rule reads the first unit only, so a Latin first word still
+    # gets a second unit even when that unit is Han.
+
+  - case: devanagari-conjunct
+    name: "क्षितिज"
+    expect: "क्षि"
+    expect_codepoints: "0915 094D 0937 093F"
+    # Four scalars, one written syllable "kshi". The first grapheme cluster on
+    # its own is क् — ka with a visible halant, which reads as broken Hindi.
+    # This is what step 4 exists for.
+
+  - case: devanagari-two-words
+    name: "हिन्दी विकी"
+    expect: "हिवि"
+    expect_codepoints: "0939 093F 0935 093F"
+    # No virama at the end of either first cluster, so each unit is one cluster
+    # — consonant plus its vowel sign, as a reader expects.
+
+  - case: thai-prefix-vowel
+    name: "ไทย"
+    expect: "ไท"
+    expect_codepoints: "0E44 0E17"
+    # ไ is stored first and drawn first but belongs to the consonant after it.
+    # Alone it is a vowel sitting on nothing.
+
+  - case: thai-prefix-vowel-with-mark
+    name: "เมืองไทย"
+    expect: "เมื"
+    expect_codepoints: "0E40 0E21 0E37"
+    # Thai has no word spaces, so a Thai name is one word and gets one unit.
+
+  - case: khmer-coeng
+    name: "ខ្មែរ"
+    expect: "ខ្មែ"
+    expect_codepoints: "1781 17D2 1798 17C2"
+
+  - case: myanmar-medial
+    name: "မြန်မာ"
+    expect: "မြ"
+    expect_codepoints: "1019 103C"
+    # The medial ra is already inside the first cluster, and asat 103A is not
+    # in the virama table, so nothing is appended.
+
+  - case: lao-prefix-vowel
+    name: "ໂລກ"
+    expect: "ໂລ"
+    expect_codepoints: "0EC2 0EA5"
+
+  # ── Names that start with something other than a letter ──
+
+  - case: guillemets
+    name: "«Война и мир»"
+    expect: "ВИ"
+    # Punctuation is stepped over inside a word. The second unit comes from
+    # "и", a one-letter conjunction — the rule does not know which words carry
+    # meaning, and teaching it would mean teaching it a language.
+
+  - case: quotation-marks
+    name: '"Hello" World'
+    expect: "HW"
+
+  - case: leading-digit
+    name: "1Password"
+    expect: "1"
+    # Decimal digits count as letters here.
+
+  - case: year-first
+    name: "2026 Planning"
+    expect: "2P"
+
+  - case: roman-numeral
+    name: "Ⅷ Symphony"
+    expect: "S"
+    # U+2167 is Nl, not a decimal digit, so the first word yields nothing and
+    # is skipped whole. Go's unicode.IsNumber and Swift's Character.isNumber
+    # both accept it; the rule asks for Nd.
+
+  - case: emoji-prefix
+    name: "🎉 Launch Party"
+    expect: "LP"
+    # The emoji is skipped and the letters win. Arguable: on a name like this
+    # the emoji is the mark the reader recognises. Drawing it instead would be
+    # a different feature, and would want its own answer from the caller.
+
+  - case: emoji-only
+    name: "🎉"
+    expect: "🎉"
+    expect_codepoints: "1F389"
+    # Nothing qualifies, so step 8 keeps what is there.
+
+  - case: emoji-zwj-sequence
+    name: "👨‍👩‍👧"
+    expect: "👨‍👩‍👧"
+    expect_codepoints: "1F468 200D 1F469 200D 1F467"
+    # One extended grapheme cluster, five scalars, seven UTF-16 units, eighteen
+    # bytes. A port that takes "the first character" by any of those measures
+    # returns a broken fragment.
+
+  - case: emoji-skin-tone
+    name: "👋🏽 Hi"
+    expect: "H"
+
+  - case: punctuation-only
+    name: "???"
+    expect: "?"
+
+  - case: symbol-only
+    name: "•"
+    expect: "•"
+
+  - case: math-bold-letters
+    name: "𝐚𝐛𝐜"
+    expect: "𝐚"
+    expect_codepoints: "1D41A"
+    # Outside the BMP, category Ll, and no uppercase mapping at all. It reads
+    # as a letter and is drawn as one.
+
+  - case: deseret-lowercase
+    name: "𐐼𐐯𐑅𐐨𐑉𐐯𐐻"
+    expect: "𐐔"
+    expect_codepoints: "10414"
+    # Outside the BMP and cased. Kotlin's name[0].uppercaseChar() works on half
+    # a surrogate pair and answers rubbish; Go's name[0] is one byte of four.
+
+  # ── Whitespace, and characters that look like whitespace ──
+
+  - case: non-breaking-space
+    name: "John Smith"
+    expect: "JS"
+    # U+00A0 has the White_Space property and splits words. Java's
+    # Character.isWhitespace says it does not, so a Kotlin port reading only
+    # that answers "J".
+
+  - case: ideographic-space
+    name: "Tokyo　Diary"
+    expect: "TD"
+
+  - case: zero-width-space
+    name: "Wiki​Layer"
+    expect: "W"
+    # The mirror of the case above: U+200B looks like a gap but is a format
+    # character with no White_Space property, so this is one word.
+
+  - case: byte-order-mark
+    name: "﻿Hello World"
+    expect: "HW"
+    # A name that came through a file with a BOM on it.
+
+  - case: rtl-override
+    name: "‮Hello"
+    expect: "H"
+    # U+202E must never reach the result. Carried into a label it reverses
+    # everything drawn after it, in the square and sometimes beyond it.
+
+  - case: soft-hyphen
+    name: "­Anna Ivanova"
+    expect: "AI"
+
+  - case: tab-separated
+    name: "Anna\tIvanova"
+    expect: "AI"
+
+  - case: newline-separated
+    name: "Anna\nIvanova"
+    expect: "AI"
+
+  - case: word-without-letters
+    name: "Party 🎉 Time"
+    expect: "PT"
+    # The middle word yields nothing and is skipped, so the second unit comes
+    # from the third word. Words are tried until two units are found, not just
+    # the first two words.
+
+  - case: combining-mark-only
+    name: "́"
+    expect: ""
+    # A mark with nothing to sit on draws as a dotted circle at best. Empty.
+
+  - case: zero-width-joiner-only
+    name: "‍"
+    expect: ""
+
+  # ── Normalisation ──
+
+  - case: decomposed-e-acute
+    name: "éclair"
+    expect: "É"
+    expect_codepoints: "00C9"
+    # Without step 1 a port takes the cluster e+U+0301, uppercases it to
+    # E+U+0301, and returns two scalars. In Swift that still compares equal to
+    # "É", which is why this case carries expect_codepoints and why the Swift
+    # port compares scalars.
+
+  - case: decomposed-vietnamese
+    name: "Đà Nẵng"
+    expect: "ĐN"
+    expect_codepoints: "0110 004E"
+
+  - case: decomposed-ring-above
+    name: "Ångstrom"
+    expect: "Å"
+    expect_codepoints: "00C5"
+    # U+00C5, the letter — not U+212B ANGSTROM SIGN, which NFC folds away.
+
+slot:
+
+  # ── A palette of twelve ──
+
+  - case: zero
+    id: 0
+    slots: 12
+    expect: 0
+
+  - case: one
+    id: 1
+    slots: 12
+    expect: 1
+
+  - case: last-slot
+    id: 11
+    slots: 12
+    expect: 11
+
+  - case: wraps-to-first
+    id: 12
+    slots: 12
+    expect: 0
+
+  - case: wraps-past-first
+    id: 13
+    slots: 12
+    expect: 1
+
+  - case: negative-one
+    id: -1
+    slots: 12
+    expect: 11
+    # Plain id % 12 answers -1 in Go, Swift and Kotlin alike: an index no
+    # palette has. Everything below is this same case, said louder.
+
+  - case: negative-multiple
+    id: -12
+    slots: 12
+    expect: 0
+
+  - case: negative-thirteen
+    id: -13
+    slots: 12
+    expect: 11
+
+  - case: ordinary-id
+    id: 1025
+    slots: 12
+    expect: 5
+
+  - case: another-ordinary-id
+    id: 2982
+    slots: 12
+    expect: 6
+
+  - case: large-id
+    id: 123456789
+    slots: 12
+    expect: 9
+
+  - case: beyond-double-precision
+    id: 9007199254740993
+    slots: 12
+    expect: 9
+    # 2^53 + 1. A port that lets this through a 64-bit float — a JSON bridge, a
+    # JavaScript layer, Swift's Double — reads 9007199254740992 and answers 8.
+
+  - case: int64-max
+    id: 9223372036854775807
+    slots: 12
+    expect: 7
+
+  - case: int64-min
+    id: -9223372036854775808
+    slots: 12
+    expect: 4
+    # Must not crash. abs() of this value overflows: Swift traps, Kotlin's
+    # Math.abs hands back the same negative number. The doubled remainder in
+    # the rule has no such edge.
+
+  # ── Palettes of other sizes ──
+  #
+  # A port that kept a twelve of its own anywhere — a constant, a default
+  # argument, a fallback when the count looks wrong — answers these with the
+  # wrong colour while every case above still passes.
+
+  - case: single-colour-palette
+    id: 7
+    slots: 1
+    expect: 0
+
+  - case: single-colour-palette-negative
+    id: -7
+    slots: 1
+    expect: 0
+
+  - case: five-colour-palette
+    id: 7
+    slots: 5
+    expect: 2
+
+  - case: eight-colour-palette-negative
+    id: -3
+    slots: 8
+    expect: 5
+
+  - case: seven-colour-palette-int64-min
+    id: -9223372036854775808
+    slots: 7
+    expect: 6
+
+  - case: large-palette
+    id: 1025
+    slots: 256
+    expect: 1
