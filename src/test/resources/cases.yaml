@@ -107,6 +107,25 @@
 #   exist; two Han characters are two words. One is the honest answer for both.
 #
 #
+# ── Versions of Unicode ───────────────────────────────────────────────────
+#
+# Ports read grapheme clusters from different places — a Go dependency, the
+# Swift runtime, a table generated in the Kotlin port — and those sit on
+# different versions of Unicode, chosen by release calendars none of which are
+# ours.
+#
+# The cases below are written so that does not decide them. Step 4 joins a
+# syllable by the virama and prefix-vowel tables above, so क्षि and ខ្មែ come out
+# the same whether or not a port's segmenter implements GB9c, which arrived in
+# Unicode 15.1 and reached Khmer and Myanmar only in 17.0. What the cases do
+# lean on — marks and spacing marks held to their base, ZWJ emoji sequences,
+# Hangul syllables, regional indicator pairs — has not moved since Unicode 9.0.
+#
+# So a case whose answer depends on a rule newer than that does not belong
+# here until every port answers it. It would fail where nobody can fix it: the
+# segmenter is the platform's, not ours.
+#
+#
 # ── Reading the cases ─────────────────────────────────────────────────────
 #
 # `expect_codepoints`, where present, writes the expected result out as Unicode
