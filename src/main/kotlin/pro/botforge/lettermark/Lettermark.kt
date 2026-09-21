@@ -44,7 +44,8 @@ public class Palette(
      * Which colour [id] is drawn on, from `0` to `slots - 1`.
      *
      * The same id always answers the same slot, so a thing keeps its colour between screens and
-     * between runs.
+     * between runs — for as long as the palette holds the same number of colours. Painting one
+     * more or one fewer moves almost everything to a different colour, which readers notice.
      */
     public fun slot(id: Long): Int {
         val slots = slots.toLong()

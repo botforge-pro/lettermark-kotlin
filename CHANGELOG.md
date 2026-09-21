@@ -16,8 +16,10 @@
   ```
 
   The first release is 0.2.0 rather than 0.1.0 because the ports share their
-  first two numbers: this one answers the same rules as lettermark 0.2.0, and
-  a matching `0.2` says the behaviour is the same wherever you read it.
+  first two numbers: this one answers the same rules as
+  [lettermark](https://github.com/botforge-pro/lettermark) 0.2.0, the Go
+  repository the ports follow, and a matching `0.2` says the behaviour is the
+  same wherever you read it.
 
 - Its own extended grapheme cluster segmentation, from a table generated out
   of the Unicode 16.0 character database. The platform's segmenters answer
@@ -25,6 +27,8 @@
   11 MB; this table is 4.5 KB and answers all 1093 cases of the Unicode 16.0
   `GraphemeBreakTest`, which runs as part of the test suite.
 
-- A copy of `cases.yaml`, the contract, and a test that compares it with the
-  leading repository byte for byte. Without the network that test fails rather
-  than passing quietly, because a corpus nobody could read proves nothing.
+- A copy of `cases.yaml`, the contract, and a test that compares it with
+  [lettermark](https://github.com/botforge-pro/lettermark) — the Go repository
+  this is a port of, and the one every port follows — byte for byte. Without
+  the network that test fails rather than passing quietly, because a corpus
+  nobody could read proves nothing.
