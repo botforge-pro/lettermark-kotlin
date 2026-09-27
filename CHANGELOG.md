@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.2.1
+
+### Changed
+
+- Published to Maven Central as `pro.botforge:lettermark-kotlin`, signed, and
+  no longer built by JitPack on first request. The code is the same as 0.2.0.
+
+  Before:
+
+  ```kotlin
+  repositories { maven("https://jitpack.io") }
+  dependencies { implementation("com.github.botforge-pro:lettermark-kotlin:v0.2.0") }
+  ```
+
+  After:
+
+  ```kotlin
+  repositories { mavenCentral() }
+  dependencies { implementation("pro.botforge:lettermark-kotlin:0.2.1") }
+  ```
+
+  Drop the JitPack repository if nothing else comes from it.
+
 ## 0.2.0
 
 ### Added

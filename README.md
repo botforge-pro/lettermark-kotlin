@@ -58,7 +58,7 @@ Unicode may come apart until the table is regenerated.
 
 ```kotlin
 dependencies {
-    implementation("pro.botforge:lettermark-kotlin:0.2.0")
+    implementation("pro.botforge:lettermark-kotlin:0.2.1")
 }
 ```
 

@@ -1,14 +1,23 @@
+import com.vanniktech.maven.publish.DeploymentValidation
+import com.vanniktech.maven.publish.JavadocJar
+import com.vanniktech.maven.publish.KotlinJvm
+import com.vanniktech.maven.publish.SourcesJar
+
 plugins {
     kotlin("jvm")
     kotlin("plugin.serialization")
     `java-library`
-    `maven-publish`
+    id("com.vanniktech.maven.publish") version "0.37.0"
     id("org.jlleitschuh.gradle.ktlint") version "14.2.0"
     id("org.jetbrains.dokka") version "2.2.0"
 }
 
 group = "pro.botforge"
-version = "0.2.0"
+version =
+    requireNotNull(
+        Regex("""^## (\d+\.\d+\.\d+)$""", RegexOption.MULTILINE)
+            .find(file("CHANGELOG.md").readText()),
+    ) { "CHANGELOG.md has no released version heading" }.groupValues[1]
 
 repositories {
     mavenCentral()
@@ -29,11 +38,6 @@ kotlin {
     jvmToolchain(17)
 }
 
-java {
-    withSourcesJar()
-    withJavadocJar()
-}
-
 dokka {
     dokkaPublications.html {
         moduleName.set("Lettermark for Kotlin")
@@ -51,10 +55,39 @@ dokka {
     }
 }
 
-publishing {
-    publications {
-        create<MavenPublication>("maven") {
-            from(components["java"])
+mavenPublishing {
+    configure(
+        KotlinJvm(
+            javadocJar = JavadocJar.Dokka("dokkaGeneratePublicationHtml"),
+            sourcesJar = SourcesJar.Sources(),
+        ),
+    )
+    publishToMavenCentral(automaticRelease = true, validateDeployment = DeploymentValidation.PUBLISHED)
+    if (!providers.gradleProperty("unsignedLocalPublish").isPresent) {
+        signAllPublications()
+    }
+    coordinates("pro.botforge", "lettermark-kotlin", version.toString())
+    pom {
+        name.set("Lettermark for Kotlin")
+        description.set("The letters and the colour slot drawn for a thing that has no picture of its own.")
+        url.set("https://github.com/botforge-pro/lettermark-kotlin")
+        licenses {
+            license {
+                name.set("MIT License")
+                url.set("https://opensource.org/licenses/MIT")
+            }
+        }
+        developers {
+            developer {
+                id.set("botforge-pro")
+                name.set("Botforge")
+                url.set("https://github.com/botforge-pro")
+            }
+        }
+        scm {
+            url.set("https://github.com/botforge-pro/lettermark-kotlin")
+            connection.set("scm:git:https://github.com/botforge-pro/lettermark-kotlin.git")
+            developerConnection.set("scm:git:ssh://git@github.com/botforge-pro/lettermark-kotlin.git")
         }
     }
 }
