@@ -4,8 +4,8 @@
 
 ### Changed
 
-- Published to Maven Central as `pro.botforge:lettermark-kotlin`, signed, and
-  no longer built by JitPack on first request. The code is the same as 0.2.0.
+- Published to Maven Central as `pro.botforge:lettermark-kotlin`, signed, instead
+  of JitPack. The code is the same as 0.2.0.
 
   Before:
 
