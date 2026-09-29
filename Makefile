@@ -1,20 +1,16 @@
 LEADING_CORPUS = ../lettermark/cases.yaml
 TEST_RESOURCES_DIR = src/test/resources
 UNICODE_VERSION = 16.0.0
-COMMENTCENSOR_REF ?= e01b652f640f383f4ffef81edfdc208672fa6ce8
-COMMENTCENSOR_ENV = build/commentcensor
-COMMENTCENSOR = $(COMMENTCENSOR_ENV)/bin/commentcensor
 
 .DEFAULT_GOAL := build
 
 .PHONY: install-tools comments lint lint-fix format test-build test docs build clean install sync-corpus unicode-sync publish publish-local publish-check
 
 install-tools:
-	python3 -m venv $(COMMENTCENSOR_ENV)
-	$(COMMENTCENSOR_ENV)/bin/pip install --quiet --upgrade git+https://github.com/botforge-pro/commentcensor.git@$(COMMENTCENSOR_REF)
+	python3 -m pip install --quiet --upgrade git+https://github.com/botforge-pro/commentcensor.git
 
 comments:
-	$(COMMENTCENSOR) .
+	commentcensor .
 
 lint: comments
 	./gradlew ktlintCheck
