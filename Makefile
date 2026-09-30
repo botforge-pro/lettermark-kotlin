@@ -1,10 +1,9 @@
-LEADING_CORPUS = ../lettermark/cases.yaml
 TEST_RESOURCES_DIR = src/test/resources
 UNICODE_VERSION = 16.0.0
 
 .DEFAULT_GOAL := build
 
-.PHONY: install-tools comments lint lint-fix format test-build test docs build clean install sync-corpus unicode-sync publish publish-local publish-check
+.PHONY: install-tools comments lint lint-fix format test-build test docs build clean install unicode-sync publish publish-local publish-check
 
 install-tools:
 	python3 -m pip install --quiet --upgrade git+https://github.com/botforge-pro/commentcensor.git
@@ -48,9 +47,6 @@ publish-local:
 
 publish-check:
 	./gradlew publishToMavenLocal
-
-sync-corpus:
-	cp $(LEADING_CORPUS) $(TEST_RESOURCES_DIR)/cases.yaml
 
 unicode-sync:
 	python3 tools/generate-graphemes.py
