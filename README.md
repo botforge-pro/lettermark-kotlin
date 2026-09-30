@@ -74,7 +74,7 @@ the Go repository the ports follow.
 `cases.yaml` is the contract. It lives in the leading repository, this port
 carries a copy under `src/test/resources`, and a test compares that copy with
 the leading repository byte for byte, so a case added there is answered here or
-fails loudly. `make sync-corpus` brings a fresh copy over.
+fails loudly. `make sync-corpus` in lettermark brings a fresh copy over.
 
 ## Lines of Code
 
