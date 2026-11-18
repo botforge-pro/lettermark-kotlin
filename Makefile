@@ -3,7 +3,7 @@ UNICODE_VERSION = 16.0.0
 
 .DEFAULT_GOAL := build
 
-.PHONY: install-tools comments lint lint-fix format test-build test docs build clean install unicode-sync publish publish-local publish-check
+.PHONY: install-tools comments lint lint-fix format test-build test docs build install unicode-sync publish publish-local publish-check
 
 install-tools:
 	python3 -m pip install --quiet --upgrade git+https://github.com/botforge-pro/commentcensor.git
@@ -30,9 +30,6 @@ docs:
 
 build: lint test-build test docs
 	./gradlew assemble
-
-clean:
-	./gradlew clean
 
 install:
 	$(MAKE) install-tools
